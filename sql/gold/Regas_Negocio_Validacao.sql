@@ -4,8 +4,8 @@ DROP TABLE IF EXISTS silver.event_json;
 CREATE TABLE silver.event_json AS
 SELECT
     CAST(attributed_touch_time AS TIMESTAMP)            AS attributed_touch_time,
-    CAST(install_time::TIMESTAMP AS TIMESTAMP)          AS install_time,
-    CAST(event_time::TIMESTAMP AS TIMESTAMP)            AS event_time,
+    CAST(install_time AS TIMESTAMP)          AS install_time,
+    CAST(event_time AS TIMESTAMP)            AS event_time,
     event_name,
     event_value,
     event_revenue,
