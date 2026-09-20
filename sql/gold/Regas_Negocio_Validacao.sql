@@ -1,11 +1,12 @@
 
+
 -- Criando Tabela Temporária para analisar as Regas de Validação
 DROP TABLE IF EXISTS silver.event_json;
 CREATE TABLE silver.event_json AS
 SELECT
     CAST(attributed_touch_time AS TIMESTAMP)            AS attributed_touch_time,
-    CAST(install_time AS TIMESTAMP)          AS install_time,
-    CAST(event_time AS TIMESTAMP)            AS event_time,
+    CAST(install_time::TIMESTAMP AS TIMESTAMP)          AS install_time,
+    CAST(event_time::TIMESTAMP AS TIMESTAMP)            AS event_time,
     event_name,
     event_value,
     event_revenue,
@@ -16,6 +17,7 @@ SELECT
     state,
     city,
     language,
+    region,
     user_id,
     customer_user_id,
     device_category,
@@ -149,7 +151,6 @@ FROM (
     FROM silver.event_json
 ) 
 GROUP BY 1;
-
 
 
 -- Criação das Tabelas Unificadas das Regras para demais Validações
