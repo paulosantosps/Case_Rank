@@ -1,23 +1,28 @@
 -- SCRIPT PARA GERAÇÃO DA CAMADA GOLD
--- Definição da Modelagem (Tabelas Fatos e Dimensões / Chaves Primárias e Secundárias)
+-- Definição da Modelagem (Tabelas Fatos e Dimensões / Chaves Primárias e Estrangeiras)
 
 -- Criação do Schema
 CREATE SCHEMA IF NOT EXISTS gold;
 
 -----------------------------------------------------------------------------------------------------------------------------------
--- Tabela Dimensão para Usuarios
+-- Tabela Dimensão para Usuarios (uma linha por user_id)
 DROP TABLE IF EXISTS gold.dim_usuario;
 CREATE TABLE gold.dim_usuario AS
 WITH CTE_Pedidos AS (
+    -- uma linha por USUÁRIO (a compra mais recente), e não uma por pedido
     SELECT user_id, customer_user_id, platform, region, country_code
-    FROM silver.event_pedidos
-    WHERE event_pedidos.order_event_seq = 1
+    FROM (
+        SELECT
+            user_id, customer_user_id, platform, region, country_code,
+            ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY event_time DESC) AS aux
+        FROM silver.event_pedidos
+    ) 
+    WHERE aux = 1
 ),
 usuarios AS (
     SELECT user_id FROM silver.install
     UNION
     SELECT user_id FROM silver.event_pedidos
-    WHERE user_id NOT IN (SELECT user_id FROM silver.install)
 )
 SELECT
     u.user_id,
@@ -30,10 +35,11 @@ SELECT
     COALESCE(i.country_code, e.country_code)         AS country_code,
     CASE WHEN i.user_id IS NOT NULL THEN 'Yes' ELSE 'No' END AS instalou_no_periodo
 FROM usuarios u
-    LEFT JOIN silver.install i 
+    LEFT JOIN silver.install i
         ON i.user_id = u.user_id
-    LEFT JOIN CTE_Pedidos e             
+    LEFT JOIN CTE_Pedidos e
         ON e.user_id = u.user_id;
+
 
 -----------------------------------------------------------------------------------------------------------------------------------
 -- Tabela Data para Analises em BI
@@ -55,10 +61,8 @@ SELECT
     CASE WHEN EXTRACT(ISODOW FROM d) IN (6, 7) THEN 'Yes' ELSE 'No' END AS fim_de_semana
 FROM GENERATE_SERIES(DATE '2026-01-01', DATE '2026-12-31', INTERVAL '1 day') AS t(d);
 
-
-
 -----------------------------------------------------------------------------------------------------------------------------------
--- Tabela Fato com Evento de Instalações dos Usuários
+-- Tabela Fato com Evento de Instalações dos Usuários (uma linha por instalação)
 DROP TABLE IF EXISTS gold.ft_instalacao;
 CREATE TABLE gold.ft_instalacao AS
 SELECT
@@ -74,25 +78,23 @@ SELECT
     i.language,
     i.device_category,
     i.device_model,
-    r.validacao_data_atribuicao
+    -- TL-74 
+    CASE WHEN COALESCE(i.country_code, '') = 'BR'
+          AND COALESCE(i.attributed_touch_time, i.install_time) < TIMESTAMP '2025-05-08 00:00:00'
+         THEN 'No' ELSE 'Yes' END   AS validacao_data_atribuicao
 FROM silver.install i
-    LEFT JOIN silver.event_regras r
-        ON i.user_id = r.user_id
-    LEFT JOIN gold.dim_usuario u 
+    LEFT JOIN gold.dim_usuario u
         ON u.user_id = i.user_id
-    LEFT JOIN gold.dim_data d    
+    LEFT JOIN gold.dim_data d
         ON d.data = CAST(i.install_time AS DATE);
 
-SELECT *
-FROM gold.ft_instalacao
-
 -----------------------------------------------------------------------------------------------------------------------------------
--- Tabela Fato com Evento de Pedido e Faturamento dos Usuários
+-- Tabela Fato com Evento de Pedido e Faturamento dos Usuários (uma linha por pedido)
 DROP TABLE IF EXISTS gold.ft_conversao;
 CREATE TABLE gold.ft_conversao AS
 SELECT
     e.event_id                 AS pk_conversao,
-    u.user_id || e.install_time AS fk_instalacao,
+    i.pk_instalacao            AS fk_instalacao,   -- vazio quando o usuário instalou antes do período
     u.user_id                  AS fk_user,
     e.site_id,
     de.sk_data                 AS fk_data_evento,
@@ -144,12 +146,14 @@ SELECT
          WHEN e.validate_event <> 'OK' AND f.order_id IS NOT NULL THEN 'Inválida e faturada'
          ELSE 'Inválida e não faturada' END AS categoria_conversao
 FROM silver.event_pedidos e
-    LEFT JOIN gold.dim_usuario u      
+    LEFT JOIN gold.dim_usuario u
         ON u.user_id = e.user_id
-    LEFT JOIN silver.faturadas f 
+    LEFT JOIN gold.ft_instalacao i
+        ON i.fk_user = e.user_id
+    LEFT JOIN silver.faturadas f
         ON f.order_id = e.af_order_id
-    LEFT JOIN gold.dim_data de        
+    LEFT JOIN gold.dim_data de
         ON de.data = CAST(e.event_time AS DATE)
-    LEFT JOIN gold.dim_data dp   
+    LEFT JOIN gold.dim_data dp
         ON dp.data = f.order_date
---WHERE e.order_event_seq = 1; -- Elimina os pedidos repetidos
+WHERE e.order_event_seq = 1;   -- elimina os pedidos repetidos (reenvios)
