@@ -58,6 +58,7 @@ FROM gold.ft_instalacao i
 -- Quais Eventos geraram Ordem de Pedido
 -- Quais passaram nas Regras de Validações
 -- Quais foram Faturados
+
 DROP TABLE IF EXISTS gold.ft_conversao_final;
 CREATE TABLE gold.conversao_final AS
 SELECT
