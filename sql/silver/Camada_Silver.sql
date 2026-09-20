@@ -13,6 +13,7 @@ SELECT
     CAST(attributed_touch_time AS TIMESTAMP)      AS attributed_touch_time,
     CAST(install_time AS TIMESTAMP)               AS install_time,
     CAST(install_time AS TIMESTAMP)               AS install_date,
+    CAST(event_time AS TIMESTAMP)                 AS event_time,
     LOWER(TRIM(platform))                         AS platform,
     UPPER(TRIM(country_code))                     AS country_code,
     UPPER(TRIM(state))                            AS state,
@@ -20,13 +21,17 @@ SELECT
     site_id,
     device_category,
     device_model,
-    os_version
+    os_version,
+    region, 
+    UPPER(TRIM(operator))                         AS operator, 
+    UPPER(TRIM(carrier))                          AS carrier, 
+    language 
 FROM (
     SELECT *,
-           ROW_NUMBER() OVER (PARTITION BY user_id) AS aux
+           ROW_NUMBER() OVER (PARTITION BY user_id, install_time) AS aux
     FROM bronze.install_brz 
 ) 
-WHERE aux = 1;
+WHERE aux = 1; -- Remove Duplicatas pelo User e Data de Instalação
 
 
 -- Criacao da tabela silver para o Evento de Compras Faturadas
