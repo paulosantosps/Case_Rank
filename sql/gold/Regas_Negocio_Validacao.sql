@@ -140,7 +140,7 @@ SELECT
     CASE WHEN TRIM(event_value) <> '{}'
               AND time_local IS NOT NULL
               AND country_code = 'BR'
-              AND diff_min BETWEEN 179 AND 421
+              AND diff_min BETWEEN 179 AND 421 -- calculando a diferença convertendo horas para minutos
          THEN 'Yes' 
          ELSE 'No' 
     END AS validacao_time_zone,
